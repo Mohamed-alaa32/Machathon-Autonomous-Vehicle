@@ -5,6 +5,9 @@ from nav_msgs.msg import Odometry,Path
 from prius_msgs.msg import Control
 from geometry_msgs.msg import PoseStamped
 from std_msgs.msg import Float32  
+from tf_transformations import euler_from_quaternion
+import math
+
 class Controller(Node):
     def __init__(self):
         super().__init__('controller_node', namespace='controller')
@@ -44,24 +47,41 @@ class Controller(Node):
         
         """
         self.totalError += error
-        steerAction = error * kp + (error - self.prevError) * kd + (self.totalError) * ki
+        steerAction = error * kp #+ (error - self.prevError) * kd + (self.totalError) * ki
         
         self.prevError = error
-        #Steering angle is limited to -1 to 1 (+1 is maximum left turn, -1 is maximum right turn)
+
+        steerAction = max(-1.0, min(1.0, steerAction))
+        #Steering rate is limited to -1 to 1 (+1 is maximum left turn, -1 is maximum right turn)
+        # Max steering angle is 0.6458 radian (37 degrees)
         return steerAction
     
     def throttleControl(self, state:Odometry, steering:float, error:float) ->float:
         """
-        If delta Z is positive, throttle more
+        If delta Z is positive or angle of elevation is high, throttle more
         and if steering angle is sharp, throttle less
         and if abs(error) is high, throttle less
 
         if want to slow down, apply brake (negative throttle) and make condition if throttleAction is negative, put data in brake msg
         if want to speed up, apply throttle
         """
+        #See which angle is the angle of elevation
+        roll , pitch , yaw = euler_from_quaternion([state.pose.pose.orientation.x, state.pose.pose.orientation.y, state.pose.pose.orientation.z, state.pose.pose.orientation.w])
+        
+        vx = state.twist.twist.linear.x
+        vy = state.twist.twist.linear.y
+        kp = 0.5
+        ki = 0.5
+        currentSpeed = math.sqrt(vx**2 + vy**2)
+        targetSpeed = (1/(0.0001+abs(steering))) + kp * pitch
+        
+        throttleAction = (targetSpeed - currentSpeed) * ki                       #pitch * k1 - abs(steering) * k2 + abs(error) * k3
 
+        throttleAction = max(-1.0, min(1.0, throttleAction))
         #Throttle is limited to 0 to 1 (1 is maximum throttle)
         #Brake is limited to 0 to 1 (1 is maximum brake)
+        #<max_speed>37.998337013956565</max_speed>
+            #<max_steer>0.6458</max_steer>
         return throttleAction
     
     def controlMsg(self) ->Control:
@@ -71,11 +91,19 @@ class Controller(Node):
         control.steer = steering
         
         if throttle < 0:
-            control.brake = abs(throttle)
+            control.brake = abs(throttle) * 0.5
         else:
             control.throttle = throttle
         control.shift_gears = 2
         
+        return control
+
+    def controlActions(self) ->Control:
+        targetIndex = self.searchTargetIndex()
+        control = Control()
+        control.shift_gears = 2
+        control.throttle = 0.3
+        control.steer = 0.3
         return control
 """
 std_msgs/Header header
@@ -95,10 +123,4 @@ uint8 REVERSE=3
 uint8 shift_gears
 
 """
-    def controlActions(self) ->Control:
-        targetIndex = self.searchTargetIndex()
-        control = Control()
-        control.shift_gears = 2
-        control.throttle = 0.3
-        control.steer = 0.3
-        return control
+    
