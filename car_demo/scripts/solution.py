@@ -9,6 +9,9 @@ from prius_msgs.msg import Control
 import time
 import numpy as np
 
+from nav_msgs.msg import Odometry
+from tf_transformations import euler_from_quaternion
+import math
 
 class FPSCounter:
     def __init__(self):
@@ -124,10 +127,50 @@ class SolutionNode(Node):
         
         self.bridge = CvBridge()
         self.command = Control()
+        self.state = Odometry()
+        self.autonomous = True
 
         self.prevpt1 = [180, 80]
         self.prevpt2 = [660, 80]
+        self.create_timer(3, self.safety_reverse)
 
+    def safety_reverse(self):
+        # if self.state.twist.twist.linear.x < 0.1:
+        #     #if true stuck here for 1 second
+        #     self.command.throttle = 0.5
+        #     self.command.shift_gears = Control.REVERSE
+        #     self.publisher.publish(self.command)
+        pass
+    def odom_callback(self,msg:Odometry):
+        self.state = msg
+    def throttleControl(self, error:float) ->float:
+        """
+        If delta Z is positive or angle of elevation is high, throttle more
+        and if steering angle is sharp, throttle less
+        and if abs(error) is high, throttle less
+
+        if want to slow down, apply brake (negative throttle) and make condition if throttleAction is negative, put data in brake msg
+        if want to speed up, apply throttle
+        """
+        #See which angle is the angle of elevation
+        roll , pitch , yaw = euler_from_quaternion([self.state.pose.pose.orientation.x, self.state.pose.pose.orientation.y, self.state.pose.pose.orientation.z, self.state.pose.pose.orientation.w])
+        
+        vx = self.state.twist.twist.linear.x
+        vy = self.state.twist.twist.linear.y
+        vz = self.state.twist.twist.linear.z
+        kp = 0.5
+        ki = 0.5
+        currentSpeed = math.sqrt(vx**2 + vy**2 + vz**2)
+        targetSpeed = (5/(0.0001+abs(error))) #+ kp * pitch
+        targetSpeed = min(10, targetSpeed)
+        throttleAction = (targetSpeed - currentSpeed) * ki                       #pitch * k1 - abs(steering) * k2 + abs(error) * k3
+        # self.get_logger().info(f"Target Speed: {targetSpeed}")
+        throttleAction = max(-1.0, min(1.0, throttleAction))
+        #Throttle is limited to 0 to 1 (1 is maximum throttle)
+        #Brake is limited to 0 to 1 (1 is maximum brake)
+        #<max_speed>37.998337013956565</max_speed>
+            #<max_steer>0.6458</max_steer>
+        return throttleAction
     
     def draw_fps(self, img):
         self.fps_counter.step()
@@ -149,12 +192,20 @@ class SolutionNode(Node):
         cv_image = self.draw_fps(cv_image)
         error, self.prevpt1, self.prevpt2 = calcError(cv_image, self.prevpt1, self.prevpt2)
         # print(error)
-        self.get_logger().info(f"Error: {error}")  
+        self.get_logger().info(f"Error: {error} prevpt1: {self.prevpt1} prevpt2: {self.prevpt2}")  
+        
         ctrl_msg = Control()
         ctrl_msg.steer = np.clip(error*0.9, -1, 1)
-        ctrl_msg.throttle = 0.15
-
-        self.publisher.publish(ctrl_msg)
+        # self.get_logger().info(f"Steering: {ctrl_msg.steer}")
+        throttle = self.throttleControl(error)
+        if throttle < 0:
+            ctrl_msg.brake = abs(throttle) * 0.5
+        else:
+            ctrl_msg.throttle = throttle
+        ctrl_msg.shift_gears = 2
+        # ctrl_msg.throttle = #0.15
+        if self.autonomous:
+            self.publisher.publish(ctrl_msg)
 
         #### show image
         cv2.imshow("prius_front",cv_image)
