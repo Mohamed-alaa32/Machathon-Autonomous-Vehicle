@@ -84,9 +84,9 @@ def calcError(image , prevpt1, prevpt2):
         cpt[0] = [centroids[minlb[0]+1][0], centroids[minlb[0]+1][1]]
         cpt[1] = [centroids[minlb[1]+1][0], centroids[minlb[1]+1][1]]
 
-        if (threshdistance[0]>50):
+        if (threshdistance[0]>250):
             cpt[0] = prevpt1
-        if (threshdistance[1]>50):
+        if (threshdistance[1]>250):
             cpt[1] = prevpt2
 
         mindistance1.clear()
@@ -132,15 +132,7 @@ class SolutionNode(Node):
 
         self.prevpt1 = [180, 80]
         self.prevpt2 = [660, 80]
-        self.create_timer(3, self.safety_reverse)
 
-    def safety_reverse(self):
-        # if self.state.twist.twist.linear.x < 0.1:
-        #     #if true stuck here for 1 second
-        #     self.command.throttle = 0.5
-        #     self.command.shift_gears = Control.REVERSE
-        #     self.publisher.publish(self.command)
-        pass
     def odom_callback(self,msg:Odometry):
         self.state = msg
     def throttleControl(self, error:float) ->float:
@@ -153,7 +145,7 @@ class SolutionNode(Node):
         if want to speed up, apply throttle
         """
         #See which angle is the angle of elevation
-        roll , pitch , yaw = euler_from_quaternion([self.state.pose.pose.orientation.x, self.state.pose.pose.orientation.y, self.state.pose.pose.orientation.z, self.state.pose.pose.orientation.w])
+        # roll , pitch , yaw = euler_from_quaternion([self.state.pose.pose.orientation.x, self.state.pose.pose.orientation.y, self.state.pose.pose.orientation.z, self.state.pose.pose.orientation.w])
         
         vx = self.state.twist.twist.linear.x
         vy = self.state.twist.twist.linear.y
@@ -192,7 +184,7 @@ class SolutionNode(Node):
         cv_image = self.draw_fps(cv_image)
         error, self.prevpt1, self.prevpt2 = calcError(cv_image, self.prevpt1, self.prevpt2)
         # print(error)
-        self.get_logger().info(f"Error: {error} prevpt1: {self.prevpt1} prevpt2: {self.prevpt2}")  
+        # self.get_logger().info(f"Error: {error} prevpt1: {self.prevpt1} prevpt2: {self.prevpt2}")  
         
         ctrl_msg = Control()
         ctrl_msg.steer = np.clip(error*0.9, -1, 1)
