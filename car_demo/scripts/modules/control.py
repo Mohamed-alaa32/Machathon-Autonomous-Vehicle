@@ -98,11 +98,6 @@ class Controller(Node):
         
         return control
 
-    def safetyCheck(self, state):
-        """
-        If the car is still in it's place for a long time, reverse the car
-        """
-
     def controlActions(self) ->Control:
         targetIndex = self.searchTargetIndex()
         control = Control()
