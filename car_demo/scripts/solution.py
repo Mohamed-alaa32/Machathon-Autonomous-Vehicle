@@ -57,9 +57,9 @@ def calcError(image , prevpt1, prevpt2):
     
     #Crop lower third of the image
     height, width = image_gray_thresh.shape
-    dst = image_gray_thresh[int(7*height/12):height, 0:width]
+    dst = image_gray_thresh[int(2*height/3):height, 0:width]
 
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(dst.astype(np.uint8), connectivity=8, ltype=cv2.CV_32S)
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(dst.astype(np.uint8), connectivity=4, ltype=cv2.CV_32S)
     ptdistance = np.zeros(3)
 
     mindistance1 = []
@@ -84,9 +84,9 @@ def calcError(image , prevpt1, prevpt2):
         cpt[0] = [centroids[minlb[0]+1][0], centroids[minlb[0]+1][1]]
         cpt[1] = [centroids[minlb[1]+1][0], centroids[minlb[1]+1][1]]
 
-        if (threshdistance[0]>250):
+        if (threshdistance[0]>100):
             cpt[0] = prevpt1
-        if (threshdistance[1]>250):
+        if (threshdistance[1]>100):
             cpt[1] = prevpt2
 
         mindistance1.clear()
@@ -100,10 +100,12 @@ def calcError(image , prevpt1, prevpt2):
     prevpt1 = cpt[0]
     prevpt2 = cpt[1]
 
-    fpt = [(cpt[0][0] + cpt[1][0])/2, (cpt[0][1] + cpt[1][1])/2 + int(7*height/12)]
+    fpt = [(cpt[0][0] + cpt[1][0])/2, (cpt[0][1] + cpt[1][1])/2 + int(2*height/3)]
 
     # Visualize fpt
     cv2.circle(image, (int(fpt[0]), int(fpt[1])), 5, (0, 0, 255), -1)
+    cv2.circle(image, (int(cpt[0][0]), int(cpt[0][1])+int(2*height/3)), 5, (0, 255, 0), -1)
+    cv2.circle(image, (int(cpt[1][0]), int(cpt[1][1])+int(2*height/3)), 5, (0, 255, 0), -1)
 
 
     cv2.circle(dst, (int(fpt[0]), int(fpt[1])), 5, (255, 255, 255), -1)
@@ -187,7 +189,7 @@ class SolutionNode(Node):
         # self.get_logger().info(f"Error: {error} prevpt1: {self.prevpt1} prevpt2: {self.prevpt2}")  
         
         ctrl_msg = Control()
-        ctrl_msg.steer = np.clip(error*0.9, -1, 1)
+        ctrl_msg.steer = np.clip(error, -1, 1)
         # self.get_logger().info(f"Steering: {ctrl_msg.steer}")
         throttle = self.throttleControl(error)
         if throttle < 0:
