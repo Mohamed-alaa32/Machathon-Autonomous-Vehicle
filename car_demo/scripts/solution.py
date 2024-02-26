@@ -8,7 +8,7 @@ from sensor_msgs.msg import Image
 from prius_msgs.msg import Control
 import time
 import numpy as np
-
+from std_msgs.msg import Float32
 from nav_msgs.msg import Odometry
 from tf_transformations import euler_from_quaternion
 import math
@@ -84,9 +84,9 @@ def calcError(image , prevpt1, prevpt2):
         cpt[0] = [centroids[minlb[0]+1][0], centroids[minlb[0]+1][1]]
         cpt[1] = [centroids[minlb[1]+1][0], centroids[minlb[1]+1][1]]
 
-        if (threshdistance[0]>100):
+        if (threshdistance[0]>150):
             cpt[0] = prevpt1
-        if (threshdistance[1]>100):
+        if (threshdistance[1]>150):
             cpt[1] = prevpt2
 
         mindistance1.clear()
@@ -126,7 +126,8 @@ class SolutionNode(Node):
         ### Publisher to the control topic
         self.publisher = self.create_publisher(Control, "/prius/control", qos_profile=10)
         self.fps_counter = FPSCounter()
-        
+        self.steer_publish = self.create_publisher(Float32, "steering", qos_profile=10)
+        self.targetSpeed_publish = self.create_publisher(Float32, "target_speed", qos_profile=10)
         self.bridge = CvBridge()
         self.command = Control()
         self.state = Odometry()
@@ -159,6 +160,9 @@ class SolutionNode(Node):
         targetSpeed = min(10, targetSpeed)
         throttleAction = (targetSpeed - currentSpeed) * ki                       #pitch * k1 - abs(steering) * k2 + abs(error) * k3
         # self.get_logger().info(f"Target Speed: {targetSpeed}")
+        msg = Float32()
+        msg.data = float(targetSpeed)
+        self.targetSpeed_publish.publish(msg)
         throttleAction = max(-1.0, min(1.0, throttleAction))
         #Throttle is limited to 0 to 1 (1 is maximum throttle)
         #Brake is limited to 0 to 1 (1 is maximum brake)
@@ -187,9 +191,10 @@ class SolutionNode(Node):
         error, self.prevpt1, self.prevpt2 = calcError(cv_image, self.prevpt1, self.prevpt2)
         # print(error)
         # self.get_logger().info(f"Error: {error} prevpt1: {self.prevpt1} prevpt2: {self.prevpt2}")  
-        
+        steer_msg = Float32()
         ctrl_msg = Control()
-        ctrl_msg.steer = np.clip(error, -1, 1)
+        error = math.tanh(error)
+        ctrl_msg.steer = error
         # self.get_logger().info(f"Steering: {ctrl_msg.steer}")
         throttle = self.throttleControl(error)
         if throttle < 0:
@@ -200,7 +205,8 @@ class SolutionNode(Node):
         # ctrl_msg.throttle = #0.15
         if self.autonomous:
             self.publisher.publish(ctrl_msg)
-
+        steer_msg.data = error
+        self.steer_publish.publish(steer_msg)
         #### show image
         cv2.imshow("prius_front",cv_image)
         cv2.waitKey(5)
