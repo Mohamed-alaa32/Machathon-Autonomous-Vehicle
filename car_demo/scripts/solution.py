@@ -31,7 +31,25 @@ class FPSCounter:
 
         return count / n_seconds
 
+class PID:
+    def __init__(self, Kp, Ki, Kd):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+        self.prev_error = 0
+        self.integral = 0
+        self.derivative = 0
+        self.prev_time = time.monotonic()
+        self.time = self.prev_time
 
+    def step(self, error):
+        self.time = time.monotonic()
+        dt = self.time - self.prev_time
+        self.integral += error * dt
+        self.derivative = (error - self.prev_error) / dt
+        self.prev_error = error
+        self.prev_time = self.time
+        return np.clip(self.Kp * error + self.Ki * self.integral + self.Kd * self.derivative, -1, 1)
 
 # create node
 def calcError(image , prevpt1, prevpt2):
@@ -84,9 +102,9 @@ def calcError(image , prevpt1, prevpt2):
         cpt[0] = [centroids[minlb[0]+1][0], centroids[minlb[0]+1][1]]
         cpt[1] = [centroids[minlb[1]+1][0], centroids[minlb[1]+1][1]]
 
-        if (threshdistance[0]>150):
+        if (threshdistance[0]>100):
             cpt[0] = prevpt1
-        if (threshdistance[1]>150):
+        if (threshdistance[1]>100):
             cpt[1] = prevpt2
 
         mindistance1.clear()
@@ -135,6 +153,9 @@ class SolutionNode(Node):
 
         self.prevpt1 = [180, 80]
         self.prevpt2 = [660, 80]
+        
+        self.steeringPID = PID(0.8, 0.1, 0.8)
+
 
     def odom_callback(self,msg:Odometry):
         self.state = msg
@@ -156,8 +177,9 @@ class SolutionNode(Node):
         kp = 0.5
         ki = 0.5
         currentSpeed = math.sqrt(vx**2 + vy**2 + vz**2)
-        targetSpeed = (5/(0.0001+abs(error))) #+ kp * pitch
-        targetSpeed = min(10, targetSpeed)
+        #targetSpeed = (5/(0.0001+abs(error))) #+ kp * pitch
+        #targetSpeed = min(10, targetSpeed)
+        targetSpeed = 12 - 2*math.tanh(error**2);
         throttleAction = (targetSpeed - currentSpeed) * ki                       #pitch * k1 - abs(steering) * k2 + abs(error) * k3
         # self.get_logger().info(f"Target Speed: {targetSpeed}")
         msg = Float32()
@@ -193,8 +215,9 @@ class SolutionNode(Node):
         # self.get_logger().info(f"Error: {error} prevpt1: {self.prevpt1} prevpt2: {self.prevpt2}")  
         steer_msg = Float32()
         ctrl_msg = Control()
-        error = math.tanh(error)
-        ctrl_msg.steer = error
+
+        steering = self.steeringPID.step(error)
+        ctrl_msg.steer = steering
         # self.get_logger().info(f"Steering: {ctrl_msg.steer}")
         throttle = self.throttleControl(error)
         if throttle < 0:
@@ -205,7 +228,7 @@ class SolutionNode(Node):
         # ctrl_msg.throttle = #0.15
         if self.autonomous:
             self.publisher.publish(ctrl_msg)
-        steer_msg.data = error
+        steer_msg.data = steering
         self.steer_publish.publish(steer_msg)
         #### show image
         cv2.imshow("prius_front",cv_image)
