@@ -1,7 +1,4 @@
 #!/usr/bin/env python3
-import rclpy
-from rclpy.node import Node
-
 import time
 import numpy as np
 from std_msgs.msg import Float32
@@ -50,16 +47,14 @@ class CamClass():
         self.steeringAngle = np.clip(self.error,-1,1) * self.maxSteer
 
     # Define a callback function to convert the image and publish it to a ROS topic
-    def image_callback(self, img):
-        try:            
-            self.error = self.calcErrorFromColor(img)
-            # self.error = self.calcErrorFromEdge(img)
+    def image_callback(self, img):                  
+        self.error = self.calcErrorFromColor(img)
+        # self.error = self.calcErrorFromEdge(img)
 
-            # Publish the image to a ROS topic
-            img = self.draw_fps(img)
-            cv2.imshow("car_front",img)
-        except CvBridgeError as e:
-            print(e)
+        # Publish the image to a ROS topic
+        img = self.draw_fps(img)
+        cv2.imshow("car_front",img)
+
 
     def draw_fps(self, img):
         self.fps_counter.step()
@@ -159,8 +154,8 @@ class CamClass():
         error = (error*90.0/400)/15
         return (error)
    
-    def calcErrorFromEdge(self,image_in):
-        gray = cv2.cvtColor(image_in, cv2.COLOR_BGR2GRAY)
+    def calcErrorFromEdge(self,image):
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         kernel_size = 5
         blur_gray = cv2.GaussianBlur(gray,(kernel_size,kernel_size),0)
