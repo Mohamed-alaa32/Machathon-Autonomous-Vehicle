@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'cam_sub = arduino_ble.cam_sub:main'
+            'control_pub = arduino_ble.control_pub:main'
         ],
     },
 )
