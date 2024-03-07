@@ -9,6 +9,9 @@ from prius_msgs.msg import Control
 import time
 import numpy as np
 
+from nav_msgs.msg import Odometry
+from tf_transformations import euler_from_quaternion
+import math
 
 class FPSCounter:
     def __init__(self):
@@ -54,9 +57,9 @@ def calcError(image , prevpt1, prevpt2):
     
     #Crop lower third of the image
     height, width = image_gray_thresh.shape
-    dst = image_gray_thresh[int(7*height/12):height, 0:width]
+    dst = image_gray_thresh[int(2*height/3):height, 0:width]
 
-    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(dst.astype(np.uint8), connectivity=8, ltype=cv2.CV_32S)
+    num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(dst.astype(np.uint8), connectivity=4, ltype=cv2.CV_32S)
     ptdistance = np.zeros(3)
 
     mindistance1 = []
@@ -81,9 +84,9 @@ def calcError(image , prevpt1, prevpt2):
         cpt[0] = [centroids[minlb[0]+1][0], centroids[minlb[0]+1][1]]
         cpt[1] = [centroids[minlb[1]+1][0], centroids[minlb[1]+1][1]]
 
-        if (threshdistance[0]>50):
+        if (threshdistance[0]>100):
             cpt[0] = prevpt1
-        if (threshdistance[1]>50):
+        if (threshdistance[1]>100):
             cpt[1] = prevpt2
 
         mindistance1.clear()
@@ -97,10 +100,12 @@ def calcError(image , prevpt1, prevpt2):
     prevpt1 = cpt[0]
     prevpt2 = cpt[1]
 
-    fpt = [(cpt[0][0] + cpt[1][0])/2, (cpt[0][1] + cpt[1][1])/2 + int(7*height/12)]
+    fpt = [(cpt[0][0] + cpt[1][0])/2, (cpt[0][1] + cpt[1][1])/2 + int(2*height/3)]
 
     # Visualize fpt
     cv2.circle(image, (int(fpt[0]), int(fpt[1])), 5, (0, 0, 255), -1)
+    cv2.circle(image, (int(cpt[0][0]), int(cpt[0][1])+int(2*height/3)), 5, (0, 255, 0), -1)
+    cv2.circle(image, (int(cpt[1][0]), int(cpt[1][1])+int(2*height/3)), 5, (0, 255, 0), -1)
 
 
     cv2.circle(dst, (int(fpt[0]), int(fpt[1])), 5, (255, 255, 255), -1)
@@ -124,10 +129,42 @@ class SolutionNode(Node):
         
         self.bridge = CvBridge()
         self.command = Control()
+        self.state = Odometry()
+        self.autonomous = True
 
         self.prevpt1 = [180, 80]
         self.prevpt2 = [660, 80]
 
+    def odom_callback(self,msg:Odometry):
+        self.state = msg
+    def throttleControl(self, error:float) ->float:
+        """
+        If delta Z is positive or angle of elevation is high, throttle more
+        and if steering angle is sharp, throttle less
+        and if abs(error) is high, throttle less
+
+        if want to slow down, apply brake (negative throttle) and make condition if throttleAction is negative, put data in brake msg
+        if want to speed up, apply throttle
+        """
+        #See which angle is the angle of elevation
+        # roll , pitch , yaw = euler_from_quaternion([self.state.pose.pose.orientation.x, self.state.pose.pose.orientation.y, self.state.pose.pose.orientation.z, self.state.pose.pose.orientation.w])
+        
+        vx = self.state.twist.twist.linear.x
+        vy = self.state.twist.twist.linear.y
+        vz = self.state.twist.twist.linear.z
+        kp = 0.5
+        ki = 0.5
+        currentSpeed = math.sqrt(vx**2 + vy**2 + vz**2)
+        targetSpeed = (5/(0.0001+abs(error))) #+ kp * pitch
+        targetSpeed = min(10, targetSpeed)
+        throttleAction = (targetSpeed - currentSpeed) * ki                       #pitch * k1 - abs(steering) * k2 + abs(error) * k3
+        # self.get_logger().info(f"Target Speed: {targetSpeed}")
+        throttleAction = max(-1.0, min(1.0, throttleAction))
+        #Throttle is limited to 0 to 1 (1 is maximum throttle)
+        #Brake is limited to 0 to 1 (1 is maximum brake)
+        #<max_speed>37.998337013956565</max_speed>
+            #<max_steer>0.6458</max_steer>
+        return throttleAction
     
     def draw_fps(self, img):
         self.fps_counter.step()
@@ -149,12 +186,20 @@ class SolutionNode(Node):
         cv_image = self.draw_fps(cv_image)
         error, self.prevpt1, self.prevpt2 = calcError(cv_image, self.prevpt1, self.prevpt2)
         # print(error)
-        self.get_logger().info(f"Error: {error}")  
+        # self.get_logger().info(f"Error: {error} prevpt1: {self.prevpt1} prevpt2: {self.prevpt2}")  
+        
         ctrl_msg = Control()
-        ctrl_msg.steer = np.clip(error*0.9, -1, 1)
-        ctrl_msg.throttle = 0.15
-
-        self.publisher.publish(ctrl_msg)
+        ctrl_msg.steer = np.clip(error, -1, 1)
+        # self.get_logger().info(f"Steering: {ctrl_msg.steer}")
+        throttle = self.throttleControl(error)
+        if throttle < 0:
+            ctrl_msg.brake = abs(throttle) * 0.5
+        else:
+            ctrl_msg.throttle = throttle
+        ctrl_msg.shift_gears = 2
+        # ctrl_msg.throttle = #0.15
+        if self.autonomous:
+            self.publisher.publish(ctrl_msg)
 
         #### show image
         cv2.imshow("prius_front",cv_image)
