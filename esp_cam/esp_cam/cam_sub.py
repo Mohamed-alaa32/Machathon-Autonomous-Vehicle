@@ -44,8 +44,11 @@ class CamNode(Node):
         try:
             # Convert the image to a ROS message
             ros_image = CvBridge().cv2_to_imgmsg(img, "bgr8")
+            error = self.calcError(ros_image)
+            errorMsg = Float32()
+            errorMsg.data = error
             # Publish the image to a ROS topic
-            self.cam_publisher.publish(ros_image)
+            self.cam_publisher.publish(errorMsg)
             img = self.draw_fps(img)
             cv2.imshow("car_front",img)
         except CvBridgeError as e:
@@ -140,14 +143,14 @@ class CamNode(Node):
         cv2.circle(image, (int(cpt[1][0]), int(cpt[1][1])+int(2*height/3)), 5, (0, 255, 0), -1)
 
 
-    cv2.circle(dst, (int(fpt[0]), int(fpt[1])), 5, (255, 255, 255), -1)
-    dst = cv2.cvtColor(dst.astype(np.uint8), cv2.COLOR_GRAY2BGR)
-    cv2.imshow("dst", dst)
+        cv2.circle(dst, (int(fpt[0]), int(fpt[1])), 5, (255, 255, 255), -1)
+        dst = cv2.cvtColor(dst.astype(np.uint8), cv2.COLOR_GRAY2BGR)
+        cv2.imshow("dst", dst)
 
 
-    error = width/2 - fpt[0]
-    error = (error*90.0/400)/15
-    return (error,self.prevpt1,self.prevpt2)
+        error = width/2 - fpt[0]
+        error = (error*90.0/400)/15
+        return (error)
 
 
 
