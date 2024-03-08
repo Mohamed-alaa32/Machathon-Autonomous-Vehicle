@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'arduino_ble'
+package_name = 'esp32_cam'
 
 setup(
     name=package_name,
@@ -13,14 +13,14 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='abdallah',
-    maintainer_email='abdallah.ibrahim5115@gmail.com',
+    maintainer='amin',
+    maintainer_email='rocketlee2004@gmail.com',
     description='TODO: Package description',
     license='TODO: License declaration',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'control_pub = arduino_ble.control_pub:main'
+            'cam_sub = esp32_cam.cam_sub:main',
         ],
     },
 )

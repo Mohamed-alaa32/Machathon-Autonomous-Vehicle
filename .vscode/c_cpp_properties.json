@@ -6,7 +6,10 @@
         "limitSymbolsToIncludedHeaders": false
       },
       "includePath": [
+<<<<<<< HEAD
         "/home/mohamedalaa/machathon/install/prius_msgs/include/**",
+=======
+>>>>>>> 2610f444bfec8ebf0e3efd77bc8c9b7b434f32e6
         "/opt/ros/humble/include/**",
         "/usr/include/**"
       ],
